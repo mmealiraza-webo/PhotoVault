@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Photo Vault</title>
+<style>
+:root{--bg:#f6f5f1;--card:#fff;--text:#1d1d1b;--muted:#6b6a65;--line:#dedcd5;--accent:#1f6feb;--accent-t:#fff;--danger:#c62828}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#161615;--card:#222221;--text:#f0efea;--muted:#9a9993;--line:#3a3a38;--accent:#5b9dff;--accent-t:#0b1220;--danger:#ff7b72}}
+:root[data-theme="dark"]{--bg:#161615;--card:#222221;--text:#f0efea;--muted:#9a9993;--line:#3a3a38;--accent:#5b9dff;--accent-t:#0b1220;--danger:#ff7b72}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;line-height:1.4;padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)}
+main{max-width:720px;margin:0 auto;padding:16px}
+h1{font-size:22px;margin:4px 0}
+.head{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px}
+.status{font-size:13px;color:var(--muted);margin:0 0 14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:14px}
+.row{display:flex;gap:8px;flex-wrap:wrap}
+input[type=text],input[type=search]{flex:1;min-width:0;font-size:16px;padding:11px 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--text)}
+button{font-size:15px;font-weight:600;padding:11px 14px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--text);cursor:pointer}
+button.primary{background:var(--accent);color:var(--accent-t);border-color:var(--accent)}
+button.danger{color:var(--danger)}
+button:disabled{opacity:.5}
+#preview{display:none;width:100%;max-height:300px;object-fit:contain;border-radius:10px;margin:10px 0;background:var(--bg)}
+.label{font-size:13px;color:var(--muted);margin:0 0 6px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px}
+.item{background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden;padding:0;text-align:left}
+.item img{display:block;width:100%;aspect-ratio:1/1;object-fit:cover;background:var(--bg)}
+.item span{display:block;padding:8px 10px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.empty{color:var(--muted);text-align:center;padding:26px 8px}
+.toast{color:var(--muted);font-size:13px;margin-top:8px;min-height:18px}
+#viewer{position:fixed;inset:0;background:rgba(0,0,0,.88);display:none;flex-direction:column;align-items:center;justify-content:center;padding:16px;z-index:20}
+#viewer img{max-width:100%;max-height:70%;object-fit:contain;border-radius:8px}
+#viewer h2{color:#fff;margin:12px 0 4px;font-size:24px}
+#viewer p{color:#bbb;margin:0 0 14px;font-size:13px}
+</style>
+</head>
+<body>
+<main>
+  <div class="head">
+    <h1>📷 Photo Vault</h1>
+    <div class="row" style="flex-wrap:nowrap">
+      <button id="themeBtn" aria-label="Switch between dark and light mode">🌙</button>
+      <button id="shareBtn" class="primary">Share</button>
+    </div>
+  </div>
+  <section class="card" id="sharePanel" style="display:none">
+    <p class="label">Send all your photos and labels to another phone</p>
+    <div class="row"><button class="primary" id="sendBtn">Send backup file</button></div>
+    <p class="label" style="margin-top:10px">Choose WhatsApp or Messages in the menu that opens. On the other phone, open the app and tap Import backup. A plain link can’t carry photos in this version.</p>
+    <div class="toast" id="shareToast"></div>
+  </section>
+  <p class="status" id="status">Photos are saved on this phone only.</p>
+
+  <section class="card" id="addCard">
+    <p class="label">1. Take a picture</p>
+    <div class="row">
+      <button class="primary" id="camBtn">Take photo</button>
+      <button id="galBtn">Choose from gallery</button>
+    </div>
+    <input type="file" id="camInput" accept="image/*" capture="environment" hidden>
+    <input type="file" id="galInput" accept="image/*" hidden>
+    <img id="preview" alt="Preview of the photo to save">
+    <p class="label" style="margin-top:12px">2. Give it a number or initials</p>
+    <div class="row">
+      <input type="text" id="nameInput" placeholder="e.g. 1042 or AK" autocomplete="off" autocapitalize="characters">
+      <button class="primary" id="saveBtn" disabled>Save</button>
+    </div>
+    <div class="toast" id="toast"></div>
+  </section>
+
+  <section class="card">
+    <p class="label">Search</p>
+    <input type="search" id="search" placeholder="Type a number or initials…" autocomplete="off">
+  </section>
+
+  <div id="count" class="label"></div>
+  <div class="grid" id="grid"></div>
+  <div class="empty" id="empty">Loading photos…</div>
+
+  <section class="card" style="margin-top:18px">
+    <p class="label">Backup</p>
+    <div class="row">
+      <button id="expBtn">Export backup</button>
+      <button id="impBtn">Import backup</button>
+    </div>
+    <input type="file" id="impInput" accept=".json,application/json" hidden>
+    <div class="toast" id="bkToast"></div>
+  </section>
+</main>
+
+<div id="viewer">
+  <img id="vImg" alt="">
+  <h2 id="vName"></h2>
+  <input type="text" id="vInput" autocomplete="off" style="display:none;flex:none;width:260px;max-width:100%;margin:12px 0 4px">
+  <p id="vDate"></p>
+  <div class="row">
+    <button id="vClose" class="primary">Close</button>
+    <button id="vEdit">Rename</button>
+    <button id="vDel" class="danger">Delete</button>
+  </div>
+</div>
+
+<script>
+(function(){
+  var $ = function(id){return document.getElementById(id)};
+  var idb = null, photos = [], urls = [], loaded = false, current = null, pendingBlob = null, delTimer = null;
+
+  function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7) }
+  function norm(s){ return String(s).toLowerCase().replace(/\s+/g,'') }
+  function toast(t){ $('toast').textContent = t }
+  function bk(t){ $('bkToast').textContent = t }
+
+  // ---------- storage (IndexedDB, on this phone) ----------
+  function openIDB(){
+    return new Promise(function(res){
+      try{
+        var r = indexedDB.open('photo-vault',1);
+        r.onupgradeneeded = function(){ r.result.createObjectStore('photos',{keyPath:'id'}) };
+        r.onsuccess = function(){ res(r.result) };
+        r.onerror = function(){ res(null) };
+      }catch(e){ res(null) }
+    });
+  }
+  function idbAll(){
+    if(!idb) return Promise.resolve([]);
+    return new Promise(function(res){
+      try{
+        var r = idb.transaction('photos').objectStore('photos').getAll();
+        r.onsuccess = function(){ res(r.result||[]) };
+        r.onerror = function(){ res([]) };
+      }catch(e){ res([]) }
+    });
+  }
+  function idbPut(rec){
+    return new Promise(function(res,rej){
+      if(!idb) return rej(new Error('no storage'));
+      try{
+        var tx = idb.transaction('photos','readwrite');
+        tx.objectStore('photos').put(rec);
+        tx.oncomplete = res; tx.onerror = function(){ rej(tx.error) };
+      }catch(e){ rej(e) }
+    });
+  }
+  function idbDel(id){
+    return new Promise(function(res){
+      if(!idb) return res();
+      try{
+        var tx = idb.transaction('photos','readwrite');
+        tx.objectStore('photos').delete(id);
+        tx.oncomplete = res; tx.onerror = res;
+      }catch(e){ res() }
+    });
+  }
+  async function load(){
+    urls.forEach(function(u){ URL.revokeObjectURL(u) }); urls = [];
+    var list = await idbAll();
+    photos = list.sort(function(a,b){ return b.created-a.created }).map(function(r){
+      var u = URL.createObjectURL(r.blob); urls.push(u);
+      return {id:r.id, name:r.name, created:r.created, src:u, blob:r.blob};
+    });
+    loaded = true; render();
+  }
+
+  // ---------- image handling ----------
+  function shrink(file){
+    return new Promise(function(res,rej){
+      var img = new Image(), u = URL.createObjectURL(file);
+      img.onload = function(){
+        var s = Math.min(1, 1400/Math.max(img.width,img.height));
+        var c = document.createElement('canvas');
+        c.width = Math.round(img.width*s); c.height = Math.round(img.height*s);
+        c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+        URL.revokeObjectURL(u);
+        c.toBlob(function(b){ b ? res(b) : rej(new Error('encode')) },'image/jpeg',0.82);
+      };
+      img.onerror = function(){ URL.revokeObjectURL(u); rej(new Error('load')) };
+      img.src = u;
+    });
+  }
+  function refreshSave(){ $('saveBtn').disabled = !(pendingBlob && $('nameInput').value.trim()) }
+
+  function onPick(e){
+    var f = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if(!f) return;
+    toast("Processing photo…");
+    shrink(f).then(function(b){
+      pendingBlob = b;
+      var p = $('preview');
+      if(p.dataset.u) URL.revokeObjectURL(p.dataset.u);
+      p.dataset.u = URL.createObjectURL(b);
+      p.src = p.dataset.u; p.style.display = 'block';
+      toast("Now type a number or initials, then Save.");
+      refreshSave(); $('nameInput').focus();
+    }).catch(function(){ toast("Couldn’t read that photo. Please try again.") });
+  }
+  $('camBtn').onclick = function(){ $('camInput').click() };
+  $('galBtn').onclick = function(){ $('galInput').click() };
+  $('camInput').onchange = onPick;
+  $('galInput').onchange = onPick;
+  $('nameInput').oninput = refreshSave;
+
+  $('saveBtn').onclick = async function(){
+    var name = $('nameInput').value.trim();
+    if(!pendingBlob || !name) return;
+    $('saveBtn').disabled = true; toast("Saving…");
+    try{
+      await idbPut({id:uid(), name:name, created:Date.now(), blob:pendingBlob});
+      pendingBlob = null; $('nameInput').value = '';
+      var p = $('preview'); p.style.display = 'none'; p.removeAttribute('src');
+      toast("Saved as “"+name+"”.");
+      await load();
+    }catch(e){ toast("Couldn’t save. Storage may be full or blocked."); refreshSave() }
+  };
+
+  // ---------- list + search ----------
+  function render(){
+    var q = norm($('search').value);
+    var shown = photos.filter(function(p){ return !q || norm(p.name).indexOf(q) !== -1 });
+    var g = $('grid'); g.innerHTML = '';
+    shown.forEach(function(p){
+      var b = document.createElement('button'); b.className = 'item';
+      var im = document.createElement('img'); im.src = p.src; im.alt = "Photo "+p.name; im.loading = 'lazy';
+      var sp = document.createElement('span'); sp.textContent = p.name;
+      b.appendChild(im); b.appendChild(sp);
+      b.onclick = function(){ openViewer(p) };
+      g.appendChild(b);
+    });
+    $('count').textContent = photos.length ? (q ? shown.length+" of "+photos.length+" photos match" : photos.length+" photo"+(photos.length===1?"":"s")) : "";
+    var em = $('empty');
+    if(!shown.length){
+      em.style.display = 'block';
+      em.textContent = !loaded ? "Loading photos…" : photos.length ? "No photo matches “"+$('search').value.trim()+"”." : "No photos yet. Take your first one above.";
+    }else em.style.display = 'none';
+  }
+  $('search').oninput = render;
+
+  // ---------- viewer ----------
+  function resetViewerUI(){
+    clearTimeout(delTimer);
+    $('vDel').textContent = 'Delete'; $('vEdit').textContent = 'Rename';
+    $('vInput').style.display = 'none'; $('vName').style.display = '';
+  }
+  function openViewer(p){
+    current = p; resetViewerUI();
+    $('vImg').src = p.src; $('vName').textContent = p.name;
+    $('vDate').textContent = new Date(p.created).toLocaleString();
+    $('viewer').style.display = 'flex';
+  }
+  function closeViewer(){ resetViewerUI(); $('viewer').style.display = 'none'; current = null }
+  $('vClose').onclick = closeViewer;
+  $('viewer').onclick = function(e){ if(e.target === $('viewer')) closeViewer() };
+
+  $('vDel').onclick = async function(){
+    if(!current) return;
+    if($('vDel').textContent === 'Delete'){
+      $('vDel').textContent = 'Tap again to confirm';
+      clearTimeout(delTimer);
+      delTimer = setTimeout(function(){ $('vDel').textContent = 'Delete' }, 4000);
+      return;
+    }
+    await idbDel(current.id); closeViewer(); await load();
+  };
+  $('vEdit').onclick = async function(){
+    if(!current) return;
+    var inp = $('vInput');
+    if(inp.style.display === 'none'){
+      inp.value = current.name; inp.style.display = 'block';
+      $('vName').style.display = 'none'; $('vEdit').textContent = 'Save name';
+      inp.focus(); inp.select(); return;
+    }
+    var n = inp.value.trim(); if(!n) return;
+    try{
+      await idbPut({id:current.id, name:n, created:current.created, blob:current.blob});
+      current.name = n; $('vName').textContent = n; resetViewerUI(); await load();
+    }catch(e){ $('vEdit').textContent = 'Couldn’t save. Try again' }
+  };
+
+  // ---------- backup ----------
+  function blobToDataUrl(b){
+    return new Promise(function(res,rej){
+      var r = new FileReader(); r.onload = function(){ res(r.result) }; r.onerror = function(){ rej(r.error) };
+      r.readAsDataURL(b);
+    });
+  }
+  function dataUrlToBlob(u){
+    var i = u.indexOf(','), head = u.slice(5,i).split(';')[0] || 'image/jpeg';
+    var bin = atob(u.slice(i+1)), arr = new Uint8Array(bin.length);
+    for(var k=0;k<bin.length;k++) arr[k] = bin.charCodeAt(k);
+    return new Blob([arr],{type:head});
+  }
+  $('expBtn').onclick = async function(){
+    if(!photos.length){ bk("There are no photos to export yet."); return }
+    $('expBtn').disabled = true; bk("Preparing backup…");
+    try{
+      var out = [];
+      for(var i=0;i<photos.length;i++){
+        var p = photos[i];
+        out.push({name:p.name, created:p.created, image: await blobToDataUrl(p.blob)});
+        bk("Preparing backup… "+(i+1)+" of "+photos.length);
+      }
+      var payload = JSON.stringify({app:"photo-vault", version:1, photos:out});
+      if(window.AndroidBridge){
+        AndroidBridge.saveFile("photo-vault-backup-"+new Date().toISOString().slice(0,10)+".json", payload);
+        bk("Backup saved to your Downloads folder."); $('expBtn').disabled = false; return;
+      }
+      var blob = new Blob([payload],{type:"application/json"});
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = "photo-vault-backup-"+new Date().toISOString().slice(0,10)+".json";
+      document.body.appendChild(a); a.click(); a.remove();
+      bk("Backup created. Check your Downloads folder. If nothing downloaded, this app can’t save files directly.");
+    }catch(e){ bk("Couldn’t create the backup.") }
+    $('expBtn').disabled = false;
+  };
+  $('impBtn').onclick = function(){ $('impInput').click() };
+  $('impInput').onchange = async function(e){
+    var f = e.target.files && e.target.files[0]; e.target.value = '';
+    if(!f) return;
+    try{
+      var data = JSON.parse(await f.text());
+      if(!data || data.app !== 'photo-vault' || !Array.isArray(data.photos)) throw new Error('format');
+      var n = 0;
+      for(var i=0;i<data.photos.length;i++){
+        var x = data.photos[i];
+        await idbPut({id:uid(), name:String(x.name||'').slice(0,100) || '?', created:x.created||Date.now(), blob:dataUrlToBlob(x.image)});
+        n++; bk("Importing… "+n+" of "+data.photos.length);
+      }
+      bk("Imported "+n+" photo"+(n===1?"":"s")+"."); await load();
+    }catch(err){ bk("That file couldn’t be imported.") }
+  };
+
+  // ---------- dark / light switch ----------
+  var root = document.documentElement;
+  function isDark(){
+    var t = root.getAttribute('data-theme');
+    if(t) return t === 'dark';
+    return !!(window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches);
+  }
+  function applyTheme(t, save){
+    root.setAttribute('data-theme', t);
+    $('themeBtn').textContent = t === 'dark' ? '☀️' : '🌙';
+    $('themeBtn').title = t === 'dark' ? 'Switch to light mode' : 'Switch to dark mode';
+    if(save){ try{ localStorage.setItem('pv-theme', t) }catch(e){} }
+  }
+  (function(){
+    var saved = null;
+    try{ saved = localStorage.getItem('pv-theme') }catch(e){}
+    applyTheme(saved === 'dark' || saved === 'light' ? saved : (isDark() ? 'dark' : 'light'), false);
+  })();
+  $('themeBtn').onclick = function(){ applyTheme(isDark() ? 'light' : 'dark', true) };
+
+  // ---------- share a backup file ----------
+  $('shareBtn').onclick = function(){ var s = $('sharePanel'); s.style.display = s.style.display === 'none' ? 'block' : 'none' };
+  function st(t){ $('shareToast').textContent = t }
+  $('sendBtn').onclick = async function(){
+    if(!photos.length){ st("There are no photos to send yet."); return }
+    $('sendBtn').disabled = true; st("Preparing…");
+    try{
+      var out = [];
+      for(var i=0;i<photos.length;i++){
+        out.push({name:photos[i].name, created:photos[i].created, image: await blobToDataUrl(photos[i].blob)});
+      }
+      var text = JSON.stringify({app:"photo-vault", version:1, photos:out});
+      var fname = "photo-vault-backup-"+new Date().toISOString().slice(0,10)+".json";
+      if(window.AndroidBridge){
+        AndroidBridge.shareFile(fname, text);
+        st("Choose WhatsApp or Messages in the menu."); $('sendBtn').disabled = false; return;
+      }
+      var shared = false;
+      if(navigator.share && navigator.canShare){
+        var types = ["application/json","text/plain"];
+        for(var t=0;t<types.length && !shared;t++){
+          var file = new File([text], fname, {type:types[t]});
+          if(navigator.canShare({files:[file]})){
+            try{ await navigator.share({files:[file], title:"Photo Vault backup"}); shared = true; st("Sent.") }
+            catch(e){ if(e && e.name === 'AbortError'){ shared = true; st("Cancelled.") } }
+          }
+        }
+      }
+      if(!shared){
+        var a = document.createElement('a');
+        a.href = URL.createObjectURL(new Blob([text],{type:"application/json"}));
+        a.download = fname; document.body.appendChild(a); a.click(); a.remove();
+        st("This phone can’t open a share menu here, so the file was saved to Downloads instead. Send it from your Files app or WhatsApp.");
+      }
+    }catch(e){ st("Couldn’t prepare the file.") }
+    $('sendBtn').disabled = false;
+  };
+
+  // ---------- start ----------
+  (async function(){
+    try{ if(navigator.storage && navigator.storage.persist) navigator.storage.persist() }catch(e){}
+    idb = await openIDB();
+    if(!idb){
+      $('status').textContent = "Storage is blocked here, so photos can’t be saved.";
+      $('addCard').style.display = 'none';
+    }
+    await load();
+  })();
+})();
+</script>
+</body>
+</html>
